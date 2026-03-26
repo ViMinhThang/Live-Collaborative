@@ -25,6 +25,7 @@ func NewHub() *Hub {
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
 		Broadcast:  make(chan BroadcastMsg),
+		Document:   []Char{},
 	}
 	return hub
 }
@@ -33,6 +34,13 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.Register:
 			h.Clients[client] = true
+			// Sync current document state
+			docData, _ := json.Marshal(h.Document)
+			syncEvent, _ := json.Marshal(Event{
+				Type: "SYNC",
+				Data: json.RawMessage(docData),
+			})
+			client.Send <- syncEvent
 		case client := <-h.Unregister:
 			if _, ok := h.Clients[client]; ok {
 				delete(h.Clients, client)

@@ -93,42 +93,26 @@ func (h *Hub) Run() {
 		}
 	}
 }
-func comparePositions(pos1, pos2 []int) bool {
-	for i := 0; i < len(pos1) && i < len(pos2); i++ {
-		if pos1[i] != pos2[i] {
-			return pos1[i] < pos2[i]
-		}
-	}
-	return len(pos1) < len(pos2)
-}
-func (h *Hub) isLess(charA, charB Char) bool {
-	if !equalPositions(charA.Position, charB.Position) {
-		return comparePositions(charA.Position, charB.Position)
-	}
-	if charA.ID.Counter != charB.ID.Counter {
-		return charA.ID.Counter < charB.ID.Counter
-	}
-	return charA.ID.UserID < charB.ID.UserID
-}
 
 func (h *Hub) handleInsert(newChar Char) {
 	index := sort.Search(len(h.Document), func(i int) bool {
-		return h.isLess(newChar, h.Document[i])
+		return IsLess(newChar, h.Document[i])
 	})
 
 	h.Document = append(h.Document[:index], append([]Char{newChar}, h.Document[index:]...)...)
 }
+
 func (h *Hub) handleDelete(targetPos []int, targetID CharID) {
 	// 1. Fast search to the neighborhood
 	index := sort.Search(len(h.Document), func(i int) bool {
-		// We look for the first element >= our target position
-		return !comparePositions(h.Document[i].Position, targetPos)
+		// We look for the first element >= our target position (using ComparePositions)
+		return ComparePositions(h.Document[i].Position, targetPos) >= 0
 	})
 
 	// 2. Linear check in case of ties at that position
 	for i := index; i < len(h.Document); i++ {
 		// If we've moved past the target position entirely, stop
-		if !equalPositions(h.Document[i].Position, targetPos) {
+		if ComparePositions(h.Document[i].Position, targetPos) != 0 {
 			break
 		}
 		// If IDs match, we found our target!
@@ -137,15 +121,4 @@ func (h *Hub) handleDelete(targetPos []int, targetID CharID) {
 			break
 		}
 	}
-}
-func equalPositions(pos1, pos2 []int) bool {
-	if len(pos1) != len(pos2) {
-		return false
-	}
-	for i := range pos1 {
-		if pos1[i] != pos2[i] {
-			return false
-		}
-	}
-	return true
 }

@@ -3,43 +3,47 @@ package model
 type Hub struct {
 
 	//Registered clients
-	clients map[*Client]bool
+	Clients map[*Client]bool
 
 	// message broadcast to all clients
-	broadcast chan []byte
+	Broadcast chan []byte
 
 	//Register request from a client
-	register chan *Client
+	Register chan *Client
 
 	//Unregister request from a client
-	unregister chan *Client
+	Unregister chan *Client
 }
 
 func NewHub() *Hub {
 	hub := &Hub{
-		clients:    make(map[*Client]bool),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		broadcast:  make(chan []byte),
+		Clients:    make(map[*Client]bool),
+		Register:   make(chan *Client),
+		Unregister: make(chan *Client),
+		Broadcast:  make(chan []byte),
 	}
 	return hub
 }
 func (h *Hub) Run() {
 	for {
 		select {
-		case client := <-h.register:
-			h.clients[client] = true
-		case client := <-h.unregister:
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
-				close(client.send)
+		case client := <-h.Register:
+			h.Clients[client] = true
+		case client := <-h.Unregister:
+			if _, ok := h.Clients[client]; ok {
+				delete(h.Clients, client)
+				close(client.Send)
 			}
-		case message := <-h.broadcast:
-			for client, status := range h.clients {
-				if status == true {
-					client.send <- message
-				}
-			}
-		}
+		case message := <-h.Broadcast:
+    		for client := range h.clients {
+        		select {
+          			case client.Send <- message:
+             		// Message sent successfully!
+            		default:
+              		// If the channel is full, we assume the client is stuck
+                	close(client.Send)
+                 	delete(h.clients, client)
+        }
+    }
 	}
 }

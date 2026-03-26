@@ -1,18 +1,43 @@
 package model
 
-import "github.com/gorilla/websocket"
+import (
+	"log"
+
+	"github.com/gorilla/websocket"
+)
 
 type Client struct {
-	hub  *Hub
-	conn *websocket.Conn
-	send chan []byte
+	Hub  *Hub
+	Conn *websocket.Conn
+	Send chan []byte
 }
 
 func NewClient(ws *websocket.Conn, h *Hub) *Client {
 	client := &Client{
-		hub:  h,
-		conn: ws,
-		send: make(chan []byte),
+		Hub:  h,
+		Conn: ws,
+		Send: make(chan []byte, 256),
 	}
 	return client
+}
+func (c *Client) ReadPump() {
+	defer func() {
+		c.Hub.Unregister <- c
+		c.Conn.Close()
+	}()
+	for {
+		_, message, err := c.Conn.ReadMessage()
+		if err != nil {
+			break
+		}
+		c.Hub.Broadcast <- message
+	}
+}
+func (client *Client) WritePump(messageType int) {
+	for message := range client.Send {
+		err := client.Conn.WriteMessage(messageType, message)
+		if err != nil {
+			log.Println("write: ", err)
+		}
+	}
 }

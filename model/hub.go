@@ -13,6 +13,8 @@ type Hub struct {
 
 	//Unregister request from a client
 	Unregister chan *Client
+
+	Document []Char
 }
 
 func NewHub() *Hub {
@@ -46,4 +48,11 @@ func (h *Hub) Run() {
         }
     }
 	}
+}
+func (h *Hub) handleInsert(newChar Char) {
+    index := sort.Search(len(h.Document), func(i int) bool {
+        return isLess(newChar.Position, h.Document[i].Position)
+    })
+
+    h.Document = append(h.Document[:index], append([]Char{newChar}, h.Document[index:]...)...)
 }

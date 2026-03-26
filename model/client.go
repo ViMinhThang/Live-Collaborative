@@ -3,20 +3,25 @@ package model
 import (
 	"log"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
 type Client struct {
-	Hub  *Hub
-	Conn *websocket.Conn
-	Send chan []byte
+	Hub     *Hub
+	Conn    *websocket.Conn
+	Send    chan []byte
+	ID      string
+	Counter int
 }
 
 func NewClient(ws *websocket.Conn, h *Hub) *Client {
 	client := &Client{
-		Hub:  h,
-		Conn: ws,
-		Send: make(chan []byte, 256),
+		Hub:     h,
+		Conn:    ws,
+		Send:    make(chan []byte, 256),
+		ID:      uuid.New().String(),
+		Counter: 0,
 	}
 	return client
 }

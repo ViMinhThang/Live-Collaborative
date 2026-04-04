@@ -8,12 +8,19 @@ import (
 	"live-collaborative/internal/service"
 	"log"
 	"net/http"
+
+	"github.com/joho/godotenv"
 )
 
 var addr = flag.String("addr", "localhost:8080", "http server address")
 
 func main() {
 	flag.Parse()
+
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Warning: No .env file found or error loading it: %v", err)
+	}
 
 	// Initialize DB
 	database.Init()

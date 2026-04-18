@@ -12,7 +12,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-var addr = flag.String("addr", "localhost:8080", "http server address")
+var addr = flag.String("addr", "0.0.0.0:8080", "http server address")
 
 func main() {
 	flag.Parse()

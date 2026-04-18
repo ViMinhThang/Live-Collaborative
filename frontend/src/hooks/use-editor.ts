@@ -9,7 +9,8 @@ import {
   mergeClocks,
 } from "@/lib/crdt";
 
-const WS_URL = "ws://localhost:80";
+const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+const WS_URL = `${wsProtocol}//${window.location.host}/ws`;
 
 export function useEditor() {
   const [document, setDocument] = useState<Char[]>([]);

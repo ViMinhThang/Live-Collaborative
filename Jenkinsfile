@@ -34,31 +34,24 @@ pipeline {
         sh 'docker push ${BE_IMAGE}:${IMAGE_TAG} && docker push ${BE_IMAGE}:latest'
       }
     }
-
     stage('Deploy to EC2') {
       when { branch 'main' }
       steps {
         withCredentials([
           sshUserPrivateKey(credentialsId: 'ec2-deploy-key',
-                           keyFileVariable: 'SSH_KEY',
-                           usernameVariable: 'SSH_USER'),
+                            keyFileVariable: 'SSH_KEY',
+                            usernameVariable: 'SSH_USER'),
           string(credentialsId: 'app-server-host',
-                 variable: 'APP_HOST')
-        ]) {
-         sh '''
-            cd /var/jenkins_home/workspace/livesync_main
-            scp -i $SSH_KEY -o StrictHostKeyChecking=no \
-            docker-compose.yml $SSH_USER@$APP_HOST:~/
-            ssh -i $SSH_KEY -o StrictHostKeyChecking=no \
-            $SSH_USER@$APP_HOST "
-            echo ${GITHUB_TOKEN} | docker login ghcr.io -u ViMinhThang --password-stdin
-            docker compose pull
-            docker compose up -d --remove-orphans
-            "
-            '''
-        }
-      }
+                variable: 'APP_HOST')
+    ]) {
+          sh """
+            cd ${WORKSPACE}
+            scp -i \$SSH_KEY -o StrictHostKeyChecking=no docker-compose.yml \$SSH_USER@\$APP_HOST:~/
+            ssh -i \$SSH_KEY -o StrictHostKeyChecking=no \$SSH_USER@\$APP_HOST 'echo ${GITHUB_TOKEN} | docker login ghcr.io -u ViMinhThang --password-stdin && docker compose pull && docker compose up -d --remove-orphans'
+      """
     }
+  }
+}
   }
 
   post {

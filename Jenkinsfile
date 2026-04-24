@@ -46,6 +46,7 @@ pipeline {
                  variable: 'APP_HOST')
         ]) {
           sh '''
+          ls -la ${WORKSPACE}
             scp -i $SSH_KEY -o StrictHostKeyChecking=no \
               docker-compose.yml $SSH_USER@$APP_HOST:~/
 

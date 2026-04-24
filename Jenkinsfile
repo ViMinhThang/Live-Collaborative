@@ -3,7 +3,7 @@ pipeline {
 
   environment {
     IMAGE_TAG    = "${GIT_COMMIT[0..7]}"
-    REGISTRY     = "ghcr.io/viminhthang"
+    REGISTRY     = 'ghcr.io/viminhthang'
     FE_IMAGE     = "${REGISTRY}/live-collaborative-frontend"
     BE_IMAGE     = "${REGISTRY}/live-collaborative-backend"
     GITHUB_TOKEN = credentials('github-token')
@@ -45,13 +45,13 @@ pipeline {
                 variable: 'APP_HOST')
     ]) {
           sh """
-            cd ${WORKSPACE}
-            scp -i \$SSH_KEY -o StrictHostKeyChecking=no docker-compose.yml \$SSH_USER@\$APP_HOST:~/
-            ssh -i \$SSH_KEY -o StrictHostKeyChecking=no \$SSH_USER@\$APP_HOST 'echo ${GITHUB_TOKEN} | docker login ghcr.io -u ViMinhThang --password-stdin && docker compose pull && docker compose up -d --remove-orphans'
-      """
+  ls -la ${WORKSPACE}/docker-compose.yml
+  scp -i \$SSH_KEY -o StrictHostKeyChecking=no ${WORKSPACE}/docker-compose.yml \$SSH_USER@\$APP_HOST:~/
+  ssh -i \$SSH_KEY -o StrictHostKeyChecking=no \$SSH_USER@\$APP_HOST 'echo ${GITHUB_TOKEN} | docker login ghcr.io -u ViMinhThang --password-stdin && docker compose pull && docker compose up -d --remove-orphans'
+"""
     }
-  }
-}
+      }
+    }
   }
 
   post {
@@ -59,7 +59,7 @@ pipeline {
       echo "Deployed ${IMAGE_TAG} to EC2 successfully"
     }
     failure {
-      echo "Pipeline failed — check console output above"
+      echo 'Pipeline failed — check console output above'
     }
     always {
       sh 'docker logout ghcr.io || true'

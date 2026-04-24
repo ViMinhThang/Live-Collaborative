@@ -3,18 +3,20 @@ WORKDIR /app
 
 # Dependencies
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Source code
 COPY . .
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/server
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/server
 
-# Final stage (smaller image)
+# Final stage
 FROM alpine:3.19
 WORKDIR /app
 COPY --from=builder /app/main .
-
 EXPOSE 8080
 CMD ["./main"]

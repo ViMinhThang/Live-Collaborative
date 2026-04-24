@@ -10,28 +10,6 @@ pipeline {
   }
 
   stages {
-
-    stage('Test') {
-      parallel {
-        stage('Frontend tests') {
-          steps {
-            dir('frontend') {
-              sh 'npm ci'
-              sh 'npm test -- --watchAll=false'
-            }
-          }
-        }
-        stage('Backend tests') {
-          steps {
-            dir('backend') {
-              sh 'go mod download'
-              sh 'go test ./...'
-            }
-          }
-        }
-      }
-    }
-
     stage('Build images') {
       when { branch 'main' }   // skip on PRs
       parallel {

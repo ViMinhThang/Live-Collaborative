@@ -45,18 +45,17 @@ pipeline {
           string(credentialsId: 'app-server-host',
                  variable: 'APP_HOST')
         ]) {
-          sh '''
-          ls -la ${WORKSPACE}
+         sh '''
+            cd /var/jenkins_home/workspace/livesync_main
             scp -i $SSH_KEY -o StrictHostKeyChecking=no \
-              ${WORKSPACE}/docker-compose.yml $SSH_USER@$APP_HOST:~/
-
+            docker-compose.yml $SSH_USER@$APP_HOST:~/
             ssh -i $SSH_KEY -o StrictHostKeyChecking=no \
-              $SSH_USER@$APP_HOST "
-                echo ${GITHUB_TOKEN} | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
-                docker compose pull
-                docker compose up -d --remove-orphans
-              "
-          '''
+            $SSH_USER@$APP_HOST "
+            echo ${GITHUB_TOKEN} | docker login ghcr.io -u ViMinhThang --password-stdin
+            docker compose pull
+            docker compose up -d --remove-orphans
+            "
+            '''
         }
       }
     }

@@ -31,5 +31,5 @@ services:
     networks:
        - app-network
     volumes:
-"docker-compose.yml" 38L, 868B                                                                                                                                          16,13         Top
+                                                                                                                                   16,13         Top
 

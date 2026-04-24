@@ -38,17 +38,19 @@ pipeline {
       when { branch 'main' }
       steps {
         withCredentials([
-          sshUserPrivateKey(credentialsId: 'ec2-deploy-key',
-                            keyFileVariable: 'SSH_KEY',
-                            usernameVariable: 'SSH_USER'),
-          string(credentialsId: 'app-server-host',
-                variable: 'APP_HOST')
+      sshUserPrivateKey(credentialsId: 'ec2-deploy-key',
+                       keyFileVariable: 'SSH_KEY',
+                       usernameVariable: 'SSH_USER'),
+      string(credentialsId: 'app-server-host',
+             variable: 'APP_HOST')
     ]) {
           sh """
-  ls -la ${WORKSPACE}/docker-compose.yml
-  scp -i \$SSH_KEY -o StrictHostKeyChecking=no ${WORKSPACE}/docker-compose.yml \$SSH_USER@\$APP_HOST:~/
-  ssh -i \$SSH_KEY -o StrictHostKeyChecking=no \$SSH_USER@\$APP_HOST 'echo ${GITHUB_TOKEN} | docker login ghcr.io -u ViMinhThang --password-stdin && docker compose pull && docker compose up -d --remove-orphans'
-"""
+        find /var/jenkins_home/workspace -name "docker-compose.yml"
+        scp -i \$SSH_KEY -o StrictHostKeyChecking=no \
+          \$(find /var/jenkins_home/workspace -name "docker-compose.yml" | head -1) \
+          \$SSH_USER@\$APP_HOST:~/
+        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no \$SSH_USER@\$APP_HOST 'echo ${GITHUB_TOKEN} | docker login ghcr.io -u ViMinhThang --password-stdin && docker compose pull && docker compose up -d --remove-orphans'
+      """
     }
       }
     }

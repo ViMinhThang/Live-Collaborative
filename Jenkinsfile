@@ -47,7 +47,7 @@ pipeline {
           sh """
           ls -la
         scp -i \$SSH_KEY -o StrictHostKeyChecking=no \
-          \$(find /var/jenkins_home/workspace -name "compose.yml" | head -1) \
+          \$(find /var/jenkins_home/workspace -name "docker-compose.yml" | head -1) \
           \$SSH_USER@\$APP_HOST:~/
         ssh -i \$SSH_KEY -o StrictHostKeyChecking=no \$SSH_USER@\$APP_HOST 'echo ${GITHUB_TOKEN} | docker login ghcr.io -u ViMinhThang --password-stdin && docker compose pull && docker compose up -d --remove-orphans'
       """

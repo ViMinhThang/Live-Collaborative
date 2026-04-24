@@ -48,7 +48,7 @@ pipeline {
           sh '''
           ls -la ${WORKSPACE}
             scp -i $SSH_KEY -o StrictHostKeyChecking=no \
-              docker-compose.yml $SSH_USER@$APP_HOST:~/
+              ${WORKSPACE}/docker-compose.yml $SSH_USER@$APP_HOST:~/
 
             ssh -i $SSH_KEY -o StrictHostKeyChecking=no \
               $SSH_USER@$APP_HOST "

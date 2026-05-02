@@ -75,6 +75,19 @@ func GenerateMidPoint(pos1, pos2 []int) []int {
 	return newPos
 }
 
+func MergeClocks(local, remote VectorClock) VectorClock {
+	merged := make(VectorClock)
+	for k, v := range local {
+		merged[k] = v
+	}
+	for userID, counter := range remote {
+		if counter > merged[userID] {
+			merged[userID] = counter
+		}
+	}
+	return merged
+}
+
 // IsLess sorts characters by position, then UserID, then Counter
 func IsLess(char1, char2 Char) bool {
 	posComp := ComparePositions(char1.Position, char2.Position)

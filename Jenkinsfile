@@ -7,9 +7,24 @@ pipeline {
     FE_IMAGE     = "${REGISTRY}/live-collaborative-frontend"
     BE_IMAGE     = "${REGISTRY}/live-collaborative-backend"
     GITHUB_TOKEN = credentials('github-token')
+    GITHUB_USER  = 'ViMinhThang'
   }
 
   stages {
+    stage('Lint') {
+      parallel {
+        stage('Lint backend') {
+          steps {
+            sh 'cd backend && go vet ./...'
+          }
+        }
+        stage('Lint frontend') {
+          steps {
+            sh 'cd frontend && npm run lint'
+          }
+        }
+      }
+    }
     stage('Build images') {
       when { branch 'main' }   // skip on PRs
       parallel {
@@ -29,7 +44,7 @@ pipeline {
     stage('Push to registry') {
       when { branch 'main' }
       steps {
-        sh 'echo ${GITHUB_TOKEN} | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin'
+        sh 'printf "%s" "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USER" --password-stdin'
         sh 'docker push ${FE_IMAGE}:${IMAGE_TAG} && docker push ${FE_IMAGE}:latest'
         sh 'docker push ${BE_IMAGE}:${IMAGE_TAG} && docker push ${BE_IMAGE}:latest'
       }
@@ -45,11 +60,11 @@ pipeline {
              variable: 'APP_HOST')
     ]) {
           sh """
-          ls -la
-        scp -i \$SSH_KEY -o StrictHostKeyChecking=no \
-          \$(find /var/jenkins_home/workspace -name "docker-compose.yml" | head -1) \
-          \$SSH_USER@\$APP_HOST:~/
-        ssh -i \$SSH_KEY -o StrictHostKeyChecking=no \$SSH_USER@\$APP_HOST 'echo ${GITHUB_TOKEN} | docker login ghcr.io -u ViMinhThang --password-stdin && docker compose pull && docker compose up -d --remove-orphans'
+          printf "%s" "$GITHUB_TOKEN" > /tmp/ghcr_token
+          scp -i \$SSH_KEY -o StrictHostKeyChecking=no /tmp/ghcr_token \$SSH_USER@\$APP_HOST:/tmp/ghcr_token
+          scp -i \$SSH_KEY -o StrictHostKeyChecking=no docker-compose.yml \$SSH_USER@\$APP_HOST:~/
+          rm /tmp/ghcr_token
+          ssh -i \$SSH_KEY -o StrictHostKeyChecking=no \$SSH_USER@\$APP_HOST 'cat /tmp/ghcr_token | docker login ghcr.io -u "$GITHUB_USER" --password-stdin && rm /tmp/ghcr_token && docker compose pull && docker compose up -d --remove-orphans'
       """
     }
       }

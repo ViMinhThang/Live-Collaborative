@@ -18,6 +18,12 @@ const (
 	OpDelete DBOpType = "DELETE"
 )
 
+const (
+	EventTypeInsert = "INSERT"
+	EventTypeDelete = "DELETE"
+	EventTypeSync   = "SYNC"
+)
+
 type DBOp struct {
 	Type DBOpType
 	Char Char
@@ -27,16 +33,19 @@ type DBOp struct {
 type DocumentRepository interface {
 	InsertCharacter(char Char)
 	DeleteCharacter(position []int, id CharID)
+	DeleteTombstones()
 }
 
 type Hub struct {
-	Clients    map[*Client]bool
-	Broadcast  chan BroadcastMsg
-	Register   chan *Client
-	Unregister chan *Client
-	Document   []Char
-	SaveQueue  chan DBOp
-	Repo       DocumentRepository
+	Clients         map[*Client]bool
+	Broadcast       chan BroadcastMsg
+	Register        chan *Client
+	Unregister      chan *Client
+	Document        []Char
+	SaveQueue       chan DBOp
+	Repo            DocumentRepository
+	VectorClock     VectorClock
+	opsSinceCompact int
 }
 
 func NewHub(repo DocumentRepository) *Hub {
@@ -48,6 +57,7 @@ func NewHub(repo DocumentRepository) *Hub {
 		Document:   []Char{},
 		SaveQueue:  make(chan DBOp, 1024),
 		Repo:       repo,
+		VectorClock: make(VectorClock),
 	}
 	return hub
 }
@@ -70,69 +80,131 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.Register:
-			h.Clients[client] = true
-			// Sync current document state
-			docData, _ := json.Marshal(h.Document)
-			syncEvent, _ := json.Marshal(Event{
-				Type: "SYNC",
-				Data: json.RawMessage(docData),
-			})
-			client.Send <- syncEvent
+			h.register(client)
 		case client := <-h.Unregister:
-			if _, ok := h.Clients[client]; ok {
-				delete(h.Clients, client)
-				close(client.Send)
-			}
+			h.unregister(client)
 		case msg := <-h.Broadcast:
-			var event Event
-			if err := json.Unmarshal(msg.Data, &event); err != nil {
-				log.Printf("Unmarshal: %v", err)
-				continue
-			}
-
-			switch event.Type {
-			case "INSERT":
-				var char Char
-				if err := json.Unmarshal(event.Data, &char); err != nil {
-					log.Printf("Unmarshal char: %v", err)
-					continue
-				}
-				if char.ID.Counter <= msg.Sender.Counter {
-					log.Printf("Duplicate event from %s (counter %d <= %d)", msg.Sender.ID, char.ID.Counter, msg.Sender.Counter)
-					continue
-				}
-				msg.Sender.Counter = char.ID.Counter
-				h.handleInsert(char)
-				h.SaveQueue <- DBOp{Type: OpInsert, Char: char}
-			case "DELETE":
-				var deleteReq struct {
-					Position []int  `json:"position"`
-					ID       CharID `json:"id"`
-				}
-				if err := json.Unmarshal(event.Data, &deleteReq); err != nil {
-					log.Printf("Unmarshal delete: %v", err)
-					continue
-				}
-				h.handleDelete(deleteReq.Position, deleteReq.ID)
-				h.SaveQueue <- DBOp{
-					Type: OpDelete,
-					Char: Char{Position: deleteReq.Position, ID: deleteReq.ID},
-				}
-			default:
-				log.Printf("Unknown event type: %s", event.Type)
-			}
-			for client := range h.Clients {
-				if client == msg.Sender {
-					continue
-				}
-				select {
-				case client.Send <- msg.Data:
-				default:
-					close(client.Send)
-					delete(h.Clients, client)
-				}
-			}
+			h.handleBroadcast(msg)
 		}
+	}
+}
+
+func (h *Hub) register(client *Client) {
+	h.Clients[client] = true
+	// Sync current document state with server clock
+	docData, err := json.Marshal(h.Document)
+	if err != nil {
+		log.Printf("Failed to marshal document for sync: %v", err)
+		return
+	}
+
+	syncEvent, err := json.Marshal(Event{
+		Type:  EventTypeSync,
+		Data:  json.RawMessage(docData),
+		Clock: h.VectorClock,
+	})
+	if err != nil {
+		log.Printf("Failed to marshal sync event: %v", err)
+		return
+	}
+	client.Send <- syncEvent
+}
+
+func (h *Hub) unregister(client *Client) {
+	if _, ok := h.Clients[client]; ok {
+		delete(h.Clients, client)
+		close(client.Send)
+	}
+}
+
+func (h *Hub) handleBroadcast(msg BroadcastMsg) {
+	var event Event
+	if err := json.Unmarshal(msg.Data, &event); err != nil {
+		log.Printf("Unmarshal broadcast event: %v", err)
+		return
+	}
+
+	switch event.Type {
+	case EventTypeInsert:
+		h.processInsert(event)
+	case EventTypeDelete:
+		h.processDelete(event)
+	default:
+		log.Printf("Unknown event type: %s", event.Type)
+		return
+	}
+
+	h.broadcastToOthers(msg.Data, msg.Sender)
+}
+
+func (h *Hub) processInsert(event Event) {
+	var char Char
+	if err := json.Unmarshal(event.Data, &char); err != nil {
+		log.Printf("Unmarshal char: %v", err)
+		return
+	}
+
+	// Causal ordering check via vector clock
+	if lastCounter, seen := h.VectorClock[char.ID.UserID]; seen && char.ID.Counter <= lastCounter {
+		log.Printf("Stale insert from %s (counter %d <= %d)", char.ID.UserID, char.ID.Counter, lastCounter)
+		return
+	}
+
+	h.VectorClock = MergeClocks(h.VectorClock, char.Clock)
+	h.handleInsert(char)
+	h.SaveQueue <- DBOp{Type: OpInsert, Char: char}
+}
+
+func (h *Hub) processDelete(event Event) {
+	var deleteReq struct {
+		Position []int  `json:"position"`
+		ID       CharID `json:"id"`
+	}
+	if err := json.Unmarshal(event.Data, &deleteReq); err != nil {
+		log.Printf("Unmarshal delete: %v", err)
+		return
+	}
+
+	h.handleDelete(deleteReq.Position, deleteReq.ID)
+	h.SaveQueue <- DBOp{
+		Type: OpDelete,
+		Char: Char{Position: deleteReq.Position, ID: deleteReq.ID},
+	}
+}
+
+func (h *Hub) broadcastToOthers(data []byte, sender *Client) {
+	for client := range h.Clients {
+		if client == sender {
+			continue
+		}
+		select {
+		case client.Send <- data:
+		default:
+			h.unregister(client)
+		}
+	}
+}
+
+func (h *Hub) checkCompaction() {
+	h.opsSinceCompact++
+	if h.opsSinceCompact >= 500 {
+		h.compactTombstones()
+	}
+}
+
+func (h *Hub) compactTombstones() {
+	h.opsSinceCompact = 0
+	before := len(h.Document)
+	kept := make([]Char, 0, before)
+	for _, c := range h.Document {
+		if !c.Deleted {
+			kept = append(kept, c)
+		}
+	}
+	h.Document = kept
+	log.Printf("Compacted document: %d tombstones removed, %d characters remain", before-len(h.Document), len(h.Document))
+	if h.Repo != nil {
+		h.Repo.DeleteTombstones()
 	}
 }
 
@@ -141,7 +213,15 @@ func (h *Hub) handleInsert(newChar Char) {
 		return IsLess(newChar, h.Document[i])
 	})
 
+	// Dedup by (userId, counter) at insertion point
+	if index < len(h.Document) &&
+		h.Document[index].ID.UserID == newChar.ID.UserID &&
+		h.Document[index].ID.Counter == newChar.ID.Counter {
+		return
+	}
+
 	h.Document = append(h.Document[:index], append([]Char{newChar}, h.Document[index:]...)...)
+	h.checkCompaction()
 }
 
 func (h *Hub) handleDelete(targetPos []int, targetID CharID) {
@@ -160,6 +240,7 @@ func (h *Hub) handleDelete(targetPos []int, targetID CharID) {
 		// If IDs match, we found our target!
 		if h.Document[i].ID == targetID {
 			h.Document[i].Deleted = true
+			h.checkCompaction()
 			break
 		}
 	}

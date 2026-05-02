@@ -8,20 +8,18 @@ import (
 )
 
 type Client struct {
-	Hub     *Hub
-	Conn    *websocket.Conn
-	Send    chan []byte
-	ID      string
-	Counter int
+	Hub  *Hub
+	Conn *websocket.Conn
+	Send chan []byte
+	ID   string
 }
 
 func NewClient(ws *websocket.Conn, h *Hub) *Client {
 	client := &Client{
-		Hub:     h,
-		Conn:    ws,
-		Send:    make(chan []byte, 256),
-		ID:      uuid.New().String(),
-		Counter: 0,
+		Hub:  h,
+		Conn: ws,
+		Send: make(chan []byte, 256),
+		ID:   uuid.New().String(),
 	}
 	return client
 }

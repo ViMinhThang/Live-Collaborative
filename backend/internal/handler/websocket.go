@@ -4,6 +4,8 @@ import (
 	"live-collaborative/internal/model"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gorilla/websocket"
 )
@@ -12,7 +14,17 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		origin := r.Header.Get("Origin")
+		allowed := os.Getenv("ALLOWED_ORIGINS")
+		if allowed == "*" || allowed == "" {
+			return true
+		}
+		for _, o := range strings.Split(allowed, ",") {
+			if strings.TrimSpace(o) == origin {
+				return true
+			}
+		}
+		return false
 	},
 }
 

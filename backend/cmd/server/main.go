@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"live-collaborative/internal/database"
 	"live-collaborative/internal/handler"
@@ -8,6 +9,10 @@ import (
 	"live-collaborative/internal/service"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -45,13 +50,29 @@ func main() {
 	go hub.Run()
 	go hub.RunDBWorker()
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		handler.ServeWs(hub, w, r)
 	})
 
-	log.Printf("Server is starting on port %s", *addr)
-	err = http.ListenAndServe(*addr, nil)
-	if err != nil {
-		log.Fatal("ListenAndServe: ", err)
-	}
+	srv := &http.Server{Addr: *addr}
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		log.Printf("Server is starting on port %s", *addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal("ListenAndServe: ", err)
+		}
+	}()
+
+	<-shutdown
+	log.Println("Shutting down...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	srv.Shutdown(ctx)
+
+	// Close the save queue (DB worker will drain remaining items)
+	close(hub.SaveQueue)
+	log.Println("Server stopped")
 }

@@ -15,37 +15,17 @@ const WS_URL = `${wsProtocol}//${window.location.host}/ws`;
 export function useEditor() {
   const [document, setDocument] = useState<Char[]>([]);
   const [isConnected, setIsConnected] = useState(false);
-  const [vectorClock, setVectorClock] = useState<VectorClock>({});
+  const vectorClockRef = useRef<VectorClock>({});
   const userId = useRef(uuidv4());
   const counter = useRef(0);
   const socketRef = useRef<WebSocket | null>(null);
-
-  useEffect(() => {
-    const socket = new WebSocket(WS_URL);
-    socketRef.current = socket;
-
-    socket.onopen = () => setIsConnected(true);
-    socket.onclose = () => setIsConnected(false);
-    socket.onmessage = (event) => {
-      try {
-        const rawEvent = JSON.parse(event.data);
-        handleIncomingEvent(rawEvent);
-      } catch (err) {
-        console.error("Failed to parse WebSocket message:", err);
-      }
-    };
-
-    return () => {
-      socket.close();
-    };
-  }, []);
+  const handlerRef = useRef<(event: EditorEvent) => void>();
 
   const handleIncomingEvent = useCallback((event: EditorEvent) => {
     if (event.type === "INSERT") {
       const char = event.data as Char;
-      setVectorClock((prev) => mergeClocks(prev, char.clock));
+      vectorClockRef.current = mergeClocks(vectorClockRef.current, char.clock);
       setDocument((prev) => {
-        // Find existing or insert location
         const existingIdx = prev.findIndex(
           (c) =>
             comparePositions(c.position, char.position) === 0 &&
@@ -53,7 +33,7 @@ export function useEditor() {
             c.id.counter === char.id.counter,
         );
 
-        if (existingIdx !== -1) return prev; // Already have it
+        if (existingIdx !== -1) return prev;
 
         const newDoc = [...prev, char];
         return newDoc.sort((a, b) => (isLess(a, b) ? -1 : 1));
@@ -74,8 +54,35 @@ export function useEditor() {
       });
     } else if (event.type === "SYNC") {
       const chars = (event.data as Char[]) || [];
+      if (event.clock) {
+        vectorClockRef.current = mergeClocks(vectorClockRef.current, event.clock);
+      }
       setDocument(chars.sort((a, b) => (isLess(a, b) ? -1 : 1)));
     }
+  }, []);
+
+  useEffect(() => {
+    handlerRef.current = handleIncomingEvent;
+  });
+
+  useEffect(() => {
+    const socket = new WebSocket(WS_URL);
+    socketRef.current = socket;
+
+    socket.onopen = () => setIsConnected(true);
+    socket.onclose = () => setIsConnected(false);
+    socket.onmessage = (event) => {
+      try {
+        const rawEvent = JSON.parse(event.data);
+        handlerRef.current?.(rawEvent);
+      } catch (err) {
+        console.error("Failed to parse WebSocket message:", err);
+      }
+    };
+
+    return () => {
+      socket.close();
+    };
   }, []);
 
   const visibleDocument = document.filter((c) => !c.deleted);
@@ -86,10 +93,12 @@ export function useEditor() {
       const nextChar =
         index < visibleDocument.length ? visibleDocument[index] : null;
 
+      const clock = vectorClockRef.current;
       const newClock = {
-        ...vectorClock,
-        [userId.current]: (vectorClock[userId.current] || 0) + 1,
+        ...clock,
+        [userId.current]: (clock[userId.current] || 0) + 1,
       };
+      vectorClockRef.current = newClock;
 
       const position = generateMidPoint(
         prevChar?.position ?? [],
@@ -108,24 +117,26 @@ export function useEditor() {
         clock: newClock,
       };
 
-      // Optimistic update
       setDocument((prev) => {
         const newDoc = [...prev, newChar];
         return newDoc.sort((a, b) => (isLess(a, b) ? -1 : 1));
       });
 
-      // Send to server
       if (socketRef.current?.readyState === WebSocket.OPEN) {
-        socketRef.current.send(
-          JSON.stringify({
-            type: "INSERT",
-            data: newChar,
-            clock: newClock,
-          }),
-        );
+        try {
+          socketRef.current.send(
+            JSON.stringify({
+              type: "INSERT",
+              data: newChar,
+              clock: newClock,
+            }),
+          );
+        } catch (err) {
+          console.error("Failed to send INSERT:", err);
+        }
       }
     },
-    [visibleDocument, vectorClock],
+    [visibleDocument],
   );
 
   const remove = useCallback(
@@ -133,9 +144,7 @@ export function useEditor() {
       const char = visibleDocument[index];
       if (!char) return;
 
-      // Optimistic update
       setDocument((prev) => {
-        // Find index in FULL document
         const fullIndex = prev.findIndex(
           (c) =>
             c.id.userId === char.id.userId &&
@@ -149,17 +158,20 @@ export function useEditor() {
         return newDoc;
       });
 
-      // Send to server
       if (socketRef.current?.readyState === WebSocket.OPEN) {
-        socketRef.current.send(
-          JSON.stringify({
-            type: "DELETE",
-            data: {
-              position: char.position,
-              id: char.id,
-            },
-          }),
-        );
+        try {
+          socketRef.current.send(
+            JSON.stringify({
+              type: "DELETE",
+              data: {
+                position: char.position,
+                id: char.id,
+              },
+            }),
+          );
+        } catch (err) {
+          console.error("Failed to send DELETE:", err);
+        }
       }
     },
     [visibleDocument],

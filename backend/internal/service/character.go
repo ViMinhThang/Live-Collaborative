@@ -42,6 +42,15 @@ func (s *DocumentService) DeleteCharacter(position []int, id model.CharID) {
 	}
 }
 
+func (s *DocumentService) DeleteTombstones() {
+	result := database.DB.Where("is_deleted = ?", true).Delete(&model.Characters{})
+	if result.Error != nil {
+		log.Println("Tombstone cleanup failed:", result.Error)
+	} else {
+		log.Printf("Cleaned up %d tombstones from database", result.RowsAffected)
+	}
+}
+
 func (s *DocumentService) LoadDocument() ([]model.Char, error) {
 	var dbChars []model.Characters
 	result := database.DB.Where("is_deleted = ?", false).Find(&dbChars)

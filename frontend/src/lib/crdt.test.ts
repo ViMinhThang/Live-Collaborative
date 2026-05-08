@@ -5,7 +5,7 @@ import {
   isLess,
   mergeClocks,
 } from "./crdt";
-import type { Char } from "./crdt";
+import type { Char } from "@/types";
 
 describe("generateMidPoint", () => {
   it("places between 0 and BASE", () => {

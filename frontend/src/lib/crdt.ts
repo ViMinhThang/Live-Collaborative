@@ -1,21 +1,7 @@
-export interface CharID {
-  counter: number;
-  userId: string;
-}
+import type { Char, VectorClock } from "@/types";
 
-export interface Char {
-  value: string;
-  position: number[];
-  id: CharID;
-  deleted: boolean;
-  clock: VectorClock;
-}
-export type VectorClock = Record<string, number>;
-export interface EditorEvent {
-  type: string;
-  data: any;
-  clock: VectorClock;
-}
+export { type Char, type CharID, type VectorClock, type EditorEvent } from "@/types";
+
 export function mergeClocks(
   local: VectorClock,
   remote: VectorClock,
@@ -26,7 +12,8 @@ export function mergeClocks(
   }
   return merged;
 }
-const BASE = 65536; // Large base for fractional indexing to reduce depth
+
+const BASE = 65536;
 
 export function generateMidPoint(pos1: number[], pos2: number[]): number[] {
   const p1 = pos1 || [];
@@ -48,7 +35,6 @@ export function generateMidPoint(pos1: number[], pos2: number[]): number[] {
       break;
     } else {
       newPos.push(val1);
-      // If we are at the end of pos1, we need to go deeper
       if (i === p1.length - 1 || i >= p1.length) {
         newPos.push(Math.floor(BASE / 2));
         break;
@@ -70,8 +56,6 @@ export function comparePositions(pos1: number[], pos2: number[]): number {
 }
 
 export function isLess(char1: Char, char2: Char): boolean {
-  if (!char1) return true;
-  if (!char2) return false;
   const posComp = comparePositions(char1.position, char2.position);
   if (posComp !== 0) return posComp < 0;
 

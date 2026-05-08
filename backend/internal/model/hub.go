@@ -19,9 +19,10 @@ const (
 )
 
 const (
-	EventTypeInsert = "INSERT"
-	EventTypeDelete = "DELETE"
-	EventTypeSync   = "SYNC"
+	EventTypeInsert   = "INSERT"
+	EventTypeDelete   = "DELETE"
+	EventTypeSync     = "SYNC"
+	EventTypePresence = "PRESENCE"
 )
 
 type DBOp struct {
@@ -45,6 +46,7 @@ type Hub struct {
 	SaveQueue       chan DBOp
 	Repo            DocumentRepository
 	VectorClock     VectorClock
+	Presences       map[string]Presence
 	opsSinceCompact int
 }
 
@@ -58,6 +60,7 @@ func NewHub(repo DocumentRepository) *Hub {
 		SaveQueue:  make(chan DBOp, 1024),
 		Repo:       repo,
 		VectorClock: make(VectorClock),
+		Presences:  make(map[string]Presence),
 	}
 	return hub
 }
@@ -91,17 +94,22 @@ func (h *Hub) Run() {
 
 func (h *Hub) register(client *Client) {
 	h.Clients[client] = true
-	// Sync current document state with server clock
 	docData, err := json.Marshal(h.Document)
 	if err != nil {
 		log.Printf("Failed to marshal document for sync: %v", err)
 		return
 	}
 
+	presences := make([]Presence, 0, len(h.Presences))
+	for _, p := range h.Presences {
+		presences = append(presences, p)
+	}
+
 	syncEvent, err := json.Marshal(Event{
-		Type:  EventTypeSync,
-		Data:  json.RawMessage(docData),
-		Clock: h.VectorClock,
+		Type:      EventTypeSync,
+		Data:      json.RawMessage(docData),
+		Clock:     h.VectorClock,
+		Presences: presences,
 	})
 	if err != nil {
 		log.Printf("Failed to marshal sync event: %v", err)
@@ -113,6 +121,7 @@ func (h *Hub) register(client *Client) {
 func (h *Hub) unregister(client *Client) {
 	if _, ok := h.Clients[client]; ok {
 		delete(h.Clients, client)
+		delete(h.Presences, client.ID)
 		close(client.Send)
 	}
 }
@@ -129,6 +138,9 @@ func (h *Hub) handleBroadcast(msg BroadcastMsg) {
 		h.processInsert(event)
 	case EventTypeDelete:
 		h.processDelete(event)
+	case EventTypePresence:
+		h.processPresence(event, msg.Sender)
+		return
 	default:
 		log.Printf("Unknown event type: %s", event.Type)
 		return
@@ -170,6 +182,28 @@ func (h *Hub) processDelete(event Event) {
 		Type: OpDelete,
 		Char: Char{Position: deleteReq.Position, ID: deleteReq.ID},
 	}
+}
+
+func (h *Hub) processPresence(event Event, sender *Client) {
+	var presence Presence
+	if err := json.Unmarshal(event.Data, &presence); err != nil {
+		log.Printf("Unmarshal presence: %v", err)
+		return
+	}
+
+	h.Presences[sender.ID] = presence
+
+	h.broadcastToOthers(marshalPresenceEvent(presence), sender)
+}
+
+func marshalPresenceEvent(presence Presence) []byte {
+	presenceData, _ := json.Marshal(presence)
+	event := Event{
+		Type: EventTypePresence,
+		Data: json.RawMessage(presenceData),
+	}
+	data, _ := json.Marshal(event)
+	return data
 }
 
 func (h *Hub) broadcastToOthers(data []byte, sender *Client) {

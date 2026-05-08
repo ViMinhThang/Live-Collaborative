@@ -14,10 +14,19 @@ type Char struct {
 	Clock    VectorClock `json:"clock"`
 }
 type Event struct {
-	Type  string          `json:"type"`
-	Data  json.RawMessage `json:"data"`
-	Clock VectorClock     `json:"clock"`
+	Type      string          `json:"type"`
+	Data      json.RawMessage `json:"data"`
+	Clock     VectorClock     `json:"clock,omitempty"`
+	Presences []Presence      `json:"presences,omitempty"`
 }
+
+type Presence struct {
+	UserID      string `json:"userId"`
+	DisplayName string `json:"displayName"`
+	Color       string `json:"color"`
+	CursorPos   int    `json:"cursorPos"`
+}
+
 type VectorClock map[string]int
 
 const Base = 65536

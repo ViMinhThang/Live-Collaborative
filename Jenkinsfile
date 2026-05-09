@@ -30,12 +30,12 @@ pipeline {
       parallel {
         stage('Build frontend') {
           steps {
-            sh 'docker build -t ${FE_IMAGE}:${IMAGE_TAG} -t ${FE_IMAGE}:latest ./frontend'
+            sh "docker build -t ${FE_IMAGE}:${IMAGE_TAG} -t ${FE_IMAGE}:latest ./frontend"
           }
         }
         stage('Build backend') {
           steps {
-            sh 'docker build -t ${BE_IMAGE}:${IMAGE_TAG} -t ${BE_IMAGE}:latest ./backend'
+            sh "docker build -t ${BE_IMAGE}:${IMAGE_TAG} -t ${BE_IMAGE}:latest ./backend"
           }
         }
       }
@@ -45,8 +45,8 @@ pipeline {
       when { branch 'main' }
       steps {
         sh 'printf "%s" "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USER" --password-stdin'
-        sh 'docker push ${FE_IMAGE}:${IMAGE_TAG} && docker push ${FE_IMAGE}:latest'
-        sh 'docker push ${BE_IMAGE}:${IMAGE_TAG} && docker push ${BE_IMAGE}:latest'
+        sh "docker push ${FE_IMAGE}:${IMAGE_TAG} && docker push ${FE_IMAGE}:latest"
+        sh "docker push ${BE_IMAGE}:${IMAGE_TAG} && docker push ${BE_IMAGE}:latest"
       }
     }
     stage('Deploy to EC2') {
